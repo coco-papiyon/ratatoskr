@@ -4,7 +4,15 @@ import {app} from '../models';
 
 export function AppInfo():Promise<string>;
 
+export function ConvertClipboardMarkdownToTable():Promise<app.ClipboardConversion>;
+
+export function ConvertClipboardTableToMarkdown():Promise<app.ClipboardConversion>;
+
+export function ConvertMarkdownTableToTSV(arg1:string):Promise<string>;
+
 export function ConvertStructuredToTable(arg1:string,arg2:string):Promise<app.StructuredTable>;
+
+export function CopyMarkdownTableToClipboard(arg1:string):Promise<void>;
 
 export function CurrentWorkingDirectory():Promise<string>;
 

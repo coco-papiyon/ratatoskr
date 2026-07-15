@@ -1,5 +1,21 @@
 export namespace app {
 	
+	export class ClipboardConversion {
+	    input: string;
+	    output: string;
+	    inputFormat: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ClipboardConversion(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.input = source["input"];
+	        this.output = source["output"];
+	        this.inputFormat = source["inputFormat"];
+	    }
+	}
 	export class LocalEntry {
 	    id: string;
 	    name: string;

@@ -6,8 +6,24 @@ export function AppInfo() {
   return window['go']['app']['App']['AppInfo']();
 }
 
+export function ConvertClipboardMarkdownToTable() {
+  return window['go']['app']['App']['ConvertClipboardMarkdownToTable']();
+}
+
+export function ConvertClipboardTableToMarkdown() {
+  return window['go']['app']['App']['ConvertClipboardTableToMarkdown']();
+}
+
+export function ConvertMarkdownTableToTSV(arg1) {
+  return window['go']['app']['App']['ConvertMarkdownTableToTSV'](arg1);
+}
+
 export function ConvertStructuredToTable(arg1, arg2) {
   return window['go']['app']['App']['ConvertStructuredToTable'](arg1, arg2);
+}
+
+export function CopyMarkdownTableToClipboard(arg1) {
+  return window['go']['app']['App']['CopyMarkdownTableToClipboard'](arg1);
 }
 
 export function CurrentWorkingDirectory() {

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import SettingsDialog from "./components/SettingsDialog.vue";
+import TableToMarkdownDialog from "./components/TableToMarkdownDialog.vue";
 import { archiveExtensions, formatSize, isArchiveName, parseS3Path, previewKind as resolvePreviewKind, structuredFormat } from "./lib/file-types";
 import { ansiToHtml, highlightCode, markdownToHtml, parseCsv } from "./lib/viewer-format";
 import { demoMarkdown } from "./mock-data";
@@ -8,6 +9,7 @@ import type { ExplorerNode, PreviewData, SourceType, StructuredFormat, Structure
 
 const activeSource = ref<SourceType>("local");
 const headerVisible = ref(true);
+const sourcePaneCollapsed = ref(false);
 const initialLocalNode: ExplorerNode = { id: "local-root", name: "Current directory", kind: "folder", path: "", sourceId: "local" };
 const selectedFolder = ref("");
 const nodes = ref<ExplorerNode[]>([]);
@@ -32,6 +34,8 @@ const awsRegion = ref("ap-northeast-1");
 const selectedEncoding = ref("auto");
 const settingsVisible = ref(false);
 const settingsError = ref("");
+const tableConverterVisible = ref(false);
+const clipboardMessage = ref("");
 const settingsDraft = ref<ViewerConfig>({ extensions: {
   markdown: [], text: [], image: [], structured: [],
 }, proxy: "", certificate: "" });
@@ -108,10 +112,15 @@ type WailsBridge = {
   GetStructuredTableRules(): Promise<StructuredTableRule[]>;
   UpdateStructuredTableRules(rules: StructuredTableRule[]): Promise<void>;
   ConvertStructuredToTable(filePath: string, content: string): Promise<StructuredTable | null>;
+  ConvertClipboardTableToMarkdown(): Promise<ClipboardConversion>;
+  ConvertClipboardMarkdownToTable(): Promise<ClipboardConversion>;
+  CopyMarkdownTableToClipboard(markdown: string): Promise<void>;
+  ConvertMarkdownTableToTSV(markdown: string): Promise<string>;
 };
 
 type S3Preview = { content: string; dataUrl?: string };
 type StructuredTable = { ruleName: string; columns: string[]; rows: string[][] };
+type ClipboardConversion = { input: string; output: string; inputFormat: string };
 type ArchiveContext = { source: SourceType; archivePath: string; prefix: string };
 
 function desktopBridge(): WailsBridge | undefined {
@@ -603,6 +612,35 @@ async function saveSettings() {
   }
 }
 
+async function convertClipboardTable(): Promise<ClipboardConversion> {
+  const bridge = desktopBridge();
+  if (!bridge) {
+    throw new Error("デスクトップ版でのみクリップボード変換を利用できます。");
+  }
+  return bridge.ConvertClipboardTableToMarkdown();
+}
+
+async function copyMarkdownTable() {
+  if (preview.value.kind !== "markdown") return;
+  const bridge = desktopBridge();
+  if (!bridge) {
+    clipboardMessage.value = "デスクトップ版でのみクリップボード変換を利用できます。";
+    return;
+  }
+  try {
+    await bridge.CopyMarkdownTableToClipboard(preview.value.content);
+    clipboardMessage.value = "Markdownの表をExcelへ貼り付けられる形式でコピーしました。";
+  } catch (caught) {
+    clipboardMessage.value = caught instanceof Error ? caught.message : String(caught);
+  }
+}
+
+async function convertClipboardMarkdownTable(): Promise<ClipboardConversion> {
+  const bridge = desktopBridge();
+  if (!bridge) throw new Error("デスクトップ版でのみクリップボード変換を利用できます。");
+  return bridge.ConvertClipboardMarkdownToTable();
+}
+
 function resizeList(event: PointerEvent) {
   const bodyGrid = resizeContainer.value;
   if (!bodyGrid) return;
@@ -645,17 +683,18 @@ onMounted(async () => {
 </script>
 
 <template>
-  <main class="app-shell" :class="{ 'header-hidden': !headerVisible }">
+  <main class="app-shell" :class="{ 'header-hidden': !headerVisible, 'source-pane-collapsed': sourcePaneCollapsed }">
     <header v-if="headerVisible" class="app-header">
       <div class="brand"><span class="brand-mark">R</span><span>ratatoskr</span></div>
       <nav class="header-source-tabs" aria-label="ソース"><button :class="{ active: activeSource === 'local' }" @click="switchSource('local')">⌂ Local</button><button :class="{ active: activeSource === 's3' }" @click="switchSource('s3')">☁ S3</button></nav>
-      <div class="header-actions"><button class="icon-button" title="設定" @click="openSettings">⚙</button><button class="icon-button" title="ヘッダーを隠す" @click="headerVisible = false">⌃</button><button class="primary-button" @click="refreshActiveSource">↻ 更新</button></div>
+      <div class="header-actions"><button class="text-button clipboard-action" title="クリップボード上の表を相互変換" @click="tableConverterVisible = true">表変換</button><button class="icon-button" title="設定" @click="openSettings">⚙</button><button class="icon-button" title="ヘッダーを隠す" @click="headerVisible = false">⌃</button><button class="primary-button" @click="refreshActiveSource">↻ 更新</button></div>
     </header>
 
     <section class="workspace">
       <aside class="source-pane">
-        <div v-if="!headerVisible" class="compact-top"><div class="brand"><span class="brand-mark">R</span><span>ratatoskr</span></div><button class="text-button" @click="headerVisible = true">ヘッダーを表示</button></div>
-        <div class="source-content">
+        <div class="pane-collapse-control"><span v-if="!sourcePaneCollapsed">SOURCE</span><button class="pane-collapse-button" :title="sourcePaneCollapsed ? '左ペインを展開' : '左ペインを最小化'" :aria-label="sourcePaneCollapsed ? '左ペインを展開' : '左ペインを最小化'" @click="sourcePaneCollapsed = !sourcePaneCollapsed">{{ sourcePaneCollapsed ? '»' : '«' }}</button></div>
+        <div v-if="!sourcePaneCollapsed && !headerVisible" class="compact-top"><div class="brand"><span class="brand-mark">R</span><span>ratatoskr</span></div><button class="text-button" @click="headerVisible = true">ヘッダーを表示</button></div>
+        <div v-if="!sourcePaneCollapsed" class="source-content">
           <div v-if="activeSource === 's3'" class="s3-settings">
             <p class="eyebrow">S3 CONNECTION</p>
             <label class="settings-field">AWS Profile<select v-model="awsProfile" @change="refreshActiveSource"><option v-for="profile in awsProfiles" :key="profile" :value="profile">{{ profile }}</option></select></label>
@@ -671,12 +710,13 @@ onMounted(async () => {
           <button v-for="node in recent" :key="`recent-${nodeKey(node)}`" class="nav-item stored-nav-item" @click="openStoredNode(node)"><span>◷</span><span class="stored-node-content"><strong>{{ node.name }}</strong><small>{{ node.sourceId === 's3' ? `S3 / ${node.profile ?? 'default'}` : 'Local' }}</small></span></button>
           <p v-if="!recent.length" class="stored-empty">選択したファイルが表示されます</p>
         </div>
-        <div class="pane-footer"><span>● {{ activeSource === 'local' ? 'Local access' : 'S3 setup required' }}</span></div>
+        <div v-if="!sourcePaneCollapsed" class="pane-footer"><span>● {{ activeSource === 'local' ? 'Local access' : 'S3 setup required' }}</span></div>
       </aside>
 
       <section class="content-pane">
         <div class="content-toolbar"><div class="path-controls"><button v-if="canNavigateUp" class="up-button" title="上のディレクトリへ移動" aria-label="上のディレクトリへ移動" @click="goToParentDirectory">↑</button><div class="breadcrumbs" :title="breadcrumbs"><span>{{ breadcrumbs }}</span></div></div><label class="search"><span>⌕</span><input v-model="query" placeholder="ファイルを検索" /></label></div>
         <p v-if="error" class="error-message">{{ error }}</p>
+        <p v-if="clipboardMessage" class="clipboard-message">{{ clipboardMessage }}</p>
         <div class="body-grid" :style="{ '--list-width': `${listWidth}%` }" :class="{ resizing }">
           <section class="file-list" aria-label="ファイル一覧">
             <div class="list-heading"><span>Files</span><span>{{ filteredNodes.length }} items</span></div>
@@ -687,7 +727,7 @@ onMounted(async () => {
           </section>
           <div class="splitter" role="separator" aria-label="一覧と本文の幅を変更" title="ドラッグして幅を変更" @pointerdown="startResize"><span></span></div>
           <section class="viewer-pane">
-            <div class="viewer-toolbar"><span class="viewer-title"><i :class="`type-${preview.kind}`"></i>{{ selectedNode.name }}</span><span class="viewer-controls"><button v-if="structuredTable" class="structured-toggle" @click="structuredViewMode = structuredViewMode === 'table' ? 'source' : 'table'">{{ structuredViewMode === 'table' ? 'Source' : 'Table' }}</button><label>Encoding <select v-model="selectedEncoding" @change="reloadSelectedFile"><option value="auto">Auto</option><option value="utf-8">UTF-8</option><option value="shift-jis">Shift_JIS</option><option value="euc-jp">EUC-JP</option><option value="iso-2022-jp">ISO-2022-JP</option></select></label><span>{{ preview.kind }}</span></span></div>
+            <div class="viewer-toolbar"><span class="viewer-title"><i :class="`type-${preview.kind}`"></i>{{ selectedNode.name }}</span><span class="viewer-controls"><button v-if="preview.kind === 'markdown'" class="structured-toggle" title="Markdownの表をExcel貼り付け用にコピー" @click="copyMarkdownTable">Markdown → Excel</button><button v-if="structuredTable" class="structured-toggle" @click="structuredViewMode = structuredViewMode === 'table' ? 'source' : 'table'">{{ structuredViewMode === 'table' ? 'Source' : 'Table' }}</button><label>Encoding <select v-model="selectedEncoding" @change="reloadSelectedFile"><option value="auto">Auto</option><option value="utf-8">UTF-8</option><option value="shift-jis">Shift_JIS</option><option value="euc-jp">EUC-JP</option><option value="iso-2022-jp">ISO-2022-JP</option></select></label><span>{{ preview.kind }}</span></span></div>
             <article v-if="preview.kind === 'markdown'" class="markdown-view" v-html="markdownToHtml(preview.content)" />
             <div v-else-if="preview.kind === 'image'" class="image-view"><img :src="preview.url" :alt="selectedNode.name" /><span>Fit to view</span></div>
             <pre v-else-if="preview.kind === 'text'" class="text-view"><code v-html="highlightedPreview" /></pre>
@@ -707,4 +747,5 @@ onMounted(async () => {
     </section>
   </main>
   <SettingsDialog v-if="settingsVisible" v-model:settings="settingsDraft" v-model:rules="structuredRulesDraft" :error="settingsError" :archive-extensions="archiveExtensions" @close="settingsVisible = false" @save="saveSettings" />
+  <TableToMarkdownDialog v-if="tableConverterVisible" :convert-to-markdown="convertClipboardTable" :convert-to-table="convertClipboardMarkdownTable" @close="tableConverterVisible = false" />
 </template>

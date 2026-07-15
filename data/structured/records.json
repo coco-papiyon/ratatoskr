@@ -1,0 +1,5 @@
+[
+  { "id": 1, "name": "Ratatoskr", "type": "local", "enabled": true },
+  { "id": 2, "name": "Archive bucket", "type": "s3", "enabled": true },
+  { "id": 3, "name": "Legacy source", "type": "local", "enabled": false }
+]

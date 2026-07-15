@@ -1,0 +1,9 @@
+node_modules/
+dist/
+build/
+.gocache/
+*.tsbuildinfo
+.DS_Store
+
+/config/
+ratatoskr.exe

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<catalog>
+  <item id="local">
+    <name>Local files</name>
+    <kind>folder</kind>
+    <enabled>true</enabled>
+  </item>
+  <item id="s3">
+    <name>S3 objects</name>
+    <kind>remote</kind>
+    <enabled>true</enabled>
+  </item>
+</catalog>

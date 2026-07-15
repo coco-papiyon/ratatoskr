@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="540" viewBox="0 0 960 540">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#173f42"/>
+      <stop offset="1" stop-color="#8fbf9f"/>
+    </linearGradient>
+  </defs>
+  <rect width="960" height="540" fill="url(#sky)"/>
+  <circle cx="760" cy="120" r="64" fill="#e8d895" opacity=".9"/>
+  <path d="M0 410 180 240l130 120 150-190 210 240 130-105 160 145v90H0Z" fill="#173b3d" opacity=".9"/>
+  <path d="M0 455 220 320l150 110 190-140 150 115 120-70 130 100v105H0Z" fill="#102d32"/>
+  <text x="48" y="82" fill="#f6f0df" font-family="sans-serif" font-size="28" font-weight="600">Ratatoskr image preview</text>
+</svg>

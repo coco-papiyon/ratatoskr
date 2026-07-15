@@ -1,0 +1,6 @@
+[32m2026-07-15 10:00:01 [INFO][0m Ratatoskr started
+[36m2026-07-15 10:00:02 [DEBUG][0m loading local workspace
+[33m2026-07-15 10:00:03 [WARN][0m sample cache is empty
+[31m2026-07-15 10:00:04 [ERROR][0m failed to connect to sample endpoint
+[1;35m2026-07-15 10:00:05 [NOTICE][0m retrying with fallback provider
+[32m2026-07-15 10:00:06 [INFO][0m fallback provider is ready

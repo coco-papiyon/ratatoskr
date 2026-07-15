@@ -2,9 +2,13 @@ package app
 
 import (
 	"bufio"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/base64"
 	"fmt"
 	"io"
+	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
@@ -163,11 +167,42 @@ func (a *App) s3Client(profile, region string) (*s3.Client, error) {
 	if region != "" {
 		options = append(options, awsconfig.WithRegion(region))
 	}
+	httpClient, err := a.httpClient()
+	if err != nil {
+		return nil, err
+	}
+	options = append(options, awsconfig.WithHTTPClient(httpClient))
 	config, err := awsconfig.LoadDefaultConfig(a.ctx, options...)
 	if err != nil {
 		return nil, fmt.Errorf("AWS 設定を読み込めません: %w", err)
 	}
 	return s3.NewFromConfig(config), nil
+}
+
+func (a *App) httpClient() (*http.Client, error) {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	if a.viewerConfig.Proxy != "" {
+		proxyURL, err := url.Parse(a.viewerConfig.Proxy)
+		if err != nil || proxyURL.Scheme == "" || proxyURL.Host == "" {
+			return nil, fmt.Errorf("Proxy URLが不正です: %s", a.viewerConfig.Proxy)
+		}
+		transport.Proxy = http.ProxyURL(proxyURL)
+	}
+	if a.viewerConfig.Certificate != "" {
+		certificate, err := os.ReadFile(a.viewerConfig.Certificate)
+		if err != nil {
+			return nil, fmt.Errorf("CA証明書を読み込めません: %w", err)
+		}
+		roots, err := x509.SystemCertPool()
+		if err != nil || roots == nil {
+			roots = x509.NewCertPool()
+		}
+		if !roots.AppendCertsFromPEM(certificate) {
+			return nil, fmt.Errorf("CA証明書の形式が不正です: %s", a.viewerConfig.Certificate)
+		}
+		transport.TLSClientConfig = &tls.Config{RootCAs: roots, MinVersion: tls.VersionTLS12}
+	}
+	return &http.Client{Transport: transport}, nil
 }
 
 func collectAWSProfiles(path string, profiles map[string]bool) {

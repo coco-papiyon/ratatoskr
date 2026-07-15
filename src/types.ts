@@ -27,6 +27,8 @@ export interface PreviewData {
 
 export interface ViewerConfig {
   extensions: Record<PreviewCategory, string[]>;
+  proxy: string;
+  certificate: string;
 }
 
 export interface StructuredTableRule {

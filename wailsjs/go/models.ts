@@ -74,6 +74,8 @@ export namespace app {
 	}
 	export class ViewerConfig {
 	    extensions: Record<string, Array<string>>;
+	    proxy: string;
+	    certificate: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new ViewerConfig(source);
@@ -82,6 +84,8 @@ export namespace app {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.extensions = source["extensions"];
+	        this.proxy = source["proxy"];
+	        this.certificate = source["certificate"];
 	    }
 	}
 

@@ -16,7 +16,7 @@ func DefaultViewerConfig() ViewerConfig {
 		"text":       {".txt", ".log", ".out", ".err", ".yaml", ".yml", ".toml", ".ini", ".conf", ".properties", ".lock", ".mod", ".sum", ".md5", ".patch", ".diff", ".map", ".ts", ".tsx", ".vue", ".js", ".jsx", ".css", ".scss", ".html", ".go", ".rs", ".py", ".java", ".c", ".cpp", ".h", ".sql", ".sh", ".ps1", ".bat", ".gitignore", ".gitattributes", ".gitmodules", ".dockerignore", ".editorconfig", ".env", "dockerfile", "makefile", "procfile", "license"},
 		"image":      {".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".avif"},
 		"structured": {".json", ".xml", ".csv", ".yaml", ".yml"},
-	}}
+	}, Proxy: "", Certificate: ""}
 }
 
 func (a *App) GetViewerConfig() ViewerConfig { return a.viewerConfig }
@@ -25,6 +25,8 @@ func (a *App) UpdateViewerConfig(config ViewerConfig) error {
 	if config.Extensions == nil {
 		return fmt.Errorf("拡張子設定が空です")
 	}
+	config.Proxy = strings.TrimSpace(config.Proxy)
+	config.Certificate = strings.TrimSpace(config.Certificate)
 	for category, extensions := range config.Extensions {
 		if category != "markdown" && category != "text" && category != "image" && category != "structured" {
 			return fmt.Errorf("不明な表示分類です: %s", category)

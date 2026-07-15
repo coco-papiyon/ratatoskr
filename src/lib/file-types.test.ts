@@ -9,6 +9,8 @@ const config: ViewerConfig = {
     structured: [".json", ".yaml", ".yml", ".csv"],
     text: [".txt", ".log", ".gitignore"],
   },
+  proxy: "",
+  certificate: "",
 };
 
 function node(name: string): ExplorerNode {

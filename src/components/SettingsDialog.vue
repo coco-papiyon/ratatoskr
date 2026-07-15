@@ -34,6 +34,14 @@ function moveRule(index: number, offset: number) {
       <p class="settings-description">表示分類ごとに参照する拡張子をカンマ区切りで設定します。例: <code>.log, .out</code></p>
       <div class="settings-form"><label v-for="category in categories" :key="category" class="settings-extension-field"><span>{{ category }}</span><input :value="settings.extensions[category].join(', ')" @input="updateExtensions(category, $event)" /></label></div>
       <label class="settings-extension-field fixed-extension-field"><span>archive</span><input :value="archiveExtensions.join(', ')" disabled /><small>固定設定</small></label>
+      <div class="network-settings">
+        <div class="rule-settings-header"><div><p class="eyebrow">NETWORK</p><h3>Proxy and certificate</h3></div></div>
+        <p class="rule-settings-help">S3などの接続で使用する設定です。未指定の場合は空のままにします。</p>
+        <div class="settings-form">
+          <label class="settings-extension-field"><span>Proxy URL</span><input v-model="settings.proxy" placeholder="例: http://proxy.example:8080" spellcheck="false" /></label>
+          <label class="settings-extension-field"><span>CA certificate</span><input v-model="settings.certificate" placeholder="証明書ファイルのパス" spellcheck="false" /></label>
+        </div>
+      </div>
       <div class="rule-settings-header"><div><p class="eyebrow">TABLE RULES</p><h3>Structured table rules</h3></div><button class="text-button rule-add-button" @click="addRule">＋ ルールを追加</button></div>
       <p class="rule-settings-help">上から順に対象ファイルを検索し、最初に一致したjqルールを適用します。</p>
       <p v-if="error" class="settings-error">{{ error }}</p>

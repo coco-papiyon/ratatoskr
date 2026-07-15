@@ -17,7 +17,9 @@ type S3Preview struct {
 }
 
 type ViewerConfig struct {
-	Extensions map[string][]string `json:"extensions"`
+	Extensions  map[string][]string `json:"extensions"`
+	Proxy       string              `json:"proxy"`
+	Certificate string              `json:"certificate"`
 }
 
 type StructuredTableRule struct {

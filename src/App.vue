@@ -34,7 +34,7 @@ const settingsVisible = ref(false);
 const settingsError = ref("");
 const settingsDraft = ref<ViewerConfig>({ extensions: {
   markdown: [], text: [], image: [], structured: [],
-}});
+}, proxy: "", certificate: "" });
 const structuredRulesDraft = ref<StructuredTableRule[]>([]);
 const archiveContext = ref<ArchiveContext | null>(null);
 const localArchiveContext = ref<ArchiveContext | null>(null);
@@ -45,7 +45,7 @@ const viewerConfig = ref<ViewerConfig>({ extensions: {
   text: [".txt", ".log", ".out", ".err", ".yaml", ".yml", ".toml", ".ini", ".conf", ".properties", ".lock", ".mod", ".sum", ".md5", ".patch", ".diff", ".map", ".ts", ".tsx", ".vue", ".js", ".jsx", ".css", ".scss", ".html", ".go", ".rs", ".py", ".java", ".c", ".cpp", ".h", ".sql", ".sh", ".ps1", ".bat", ".gitignore", ".gitattributes", ".gitmodules", ".dockerignore", ".editorconfig", ".env", "dockerfile", "makefile", "procfile", "license"],
   image: [".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".avif"],
   structured: [".json", ".xml", ".csv", ".yaml", ".yml"],
-}});
+}, proxy: "", certificate: "" });
 let objectUrl: string | undefined;
 
 const filteredNodes = computed(() => {
@@ -555,7 +555,11 @@ function reloadSelectedFile() {
 }
 
 async function openSettings() {
-  settingsDraft.value = { extensions: Object.fromEntries(Object.entries(viewerConfig.value.extensions).map(([category, extensions]) => [category, [...extensions]])) as ViewerConfig["extensions"] };
+  settingsDraft.value = {
+    extensions: Object.fromEntries(Object.entries(viewerConfig.value.extensions).map(([category, extensions]) => [category, [...extensions]])) as ViewerConfig["extensions"],
+    proxy: viewerConfig.value.proxy,
+    certificate: viewerConfig.value.certificate,
+  };
   structuredRulesDraft.value = [];
   settingsError.value = "";
   settingsVisible.value = true;

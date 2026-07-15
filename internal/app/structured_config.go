@@ -106,6 +106,9 @@ func (a *App) ConvertStructuredToTable(filePath, content string) (*StructuredTab
 }
 
 func makeStructuredTable(ruleName string, values []any) *StructuredTable {
+	if table, ok := makeArrayTable(ruleName, values); ok {
+		return table
+	}
 	columnSet := map[string]bool{}
 	objects := make([]map[string]any, 0, len(values))
 	for _, value := range values {
@@ -132,6 +135,35 @@ func makeStructuredTable(ruleName string, values []any) *StructuredTable {
 		rows = append(rows, row)
 	}
 	return &StructuredTable{RuleName: ruleName, Columns: columns, Rows: rows}
+}
+
+func makeArrayTable(ruleName string, values []any) (*StructuredTable, bool) {
+	if len(values) == 0 {
+		return nil, false
+	}
+	headers, ok := values[0].([]any)
+	if !ok || len(headers) == 0 {
+		return nil, false
+	}
+	columns := make([]string, len(headers))
+	for index, header := range headers {
+		columns[index] = structuredCellText(header)
+	}
+	rows := make([][]string, 0, len(values)-1)
+	for _, value := range values[1:] {
+		cells, ok := value.([]any)
+		if !ok {
+			return nil, false
+		}
+		row := make([]string, len(columns))
+		for index := range columns {
+			if index < len(cells) {
+				row[index] = structuredCellText(cells[index])
+			}
+		}
+		rows = append(rows, row)
+	}
+	return &StructuredTable{RuleName: ruleName, Columns: columns, Rows: rows}, true
 }
 
 func structuredCellText(value any) string {

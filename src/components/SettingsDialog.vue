@@ -12,7 +12,7 @@ function updateExtensions(category: keyof ViewerConfig["extensions"], event: Eve
 }
 
 function addRule() {
-  rules.value.push({ name: "New rule", filePattern: "(?i).*\\.json$", jq: "." });
+  rules.value.unshift({ name: "New rule", filePattern: "(?i).*\\.json$", jq: "." });
 }
 
 function removeRule(index: number) {

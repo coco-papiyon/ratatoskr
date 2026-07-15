@@ -58,6 +58,31 @@ func TestConvertStructuredToTableCustomJQRule(t *testing.T) {
 	}
 }
 
+func TestConvertStructuredToTableFixedArrayUsesFirstRowAsHeaders(t *testing.T) {
+	app := &App{structuredTableRules: []StructuredTableRule{{
+		Name:        "Fixed array",
+		FilePattern: `fixed-array\.json$`,
+		JQ:          ".",
+	}}}
+	table, err := app.ConvertStructuredToTable("fixed-array.json", `[
+		["title1", "title2"],
+		["val1", "val2"],
+		["val3", "val4"]
+	]`)
+	if err != nil {
+		t.Fatalf("ConvertStructuredToTable returned an error: %v", err)
+	}
+	if table == nil {
+		t.Fatal("ConvertStructuredToTable returned no table")
+	}
+	if !reflect.DeepEqual(table.Columns, []string{"title1", "title2"}) {
+		t.Fatalf("unexpected columns: %#v", table.Columns)
+	}
+	if !reflect.DeepEqual(table.Rows, [][]string{{"val1", "val2"}, {"val3", "val4"}}) {
+		t.Fatalf("unexpected rows: %#v", table.Rows)
+	}
+}
+
 func TestConvertStructuredToTableIgnoresUnmatchedFiles(t *testing.T) {
 	app := &App{structuredTableRules: DefaultStructuredTableRules()}
 	table, err := app.ConvertStructuredToTable("records.xml", `{}`)

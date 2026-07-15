@@ -1,0 +1,6 @@
+[
+  ["title1", "title2", "title3"],
+  ["val1", "100", "enabled"],
+  ["val2", "200", "disabled"],
+  ["val3", "300", "enabled"]
+]

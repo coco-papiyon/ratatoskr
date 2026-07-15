@@ -23,9 +23,9 @@ type ViewerConfig struct {
 }
 
 type StructuredTableRule struct {
-	Name        string `json:"name"`
-	FilePattern string `json:"filePattern"`
-	JQ          string `json:"jq"`
+	Name        string `json:"name" yaml:"name"`
+	FilePattern string `json:"filePattern" yaml:"filePattern"`
+	JQ          string `json:"jq" yaml:"jq"`
 }
 
 type StructuredTable struct {

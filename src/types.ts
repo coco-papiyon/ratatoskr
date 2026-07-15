@@ -10,6 +10,8 @@ export interface ExplorerNode {
   kind: NodeKind;
   path: string;
   sourceId: string;
+  profile?: string;
+  region?: string;
   modifiedAt?: string;
   size?: number;
   mimeType?: string;

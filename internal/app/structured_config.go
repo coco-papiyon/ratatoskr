@@ -14,15 +14,13 @@ import (
 )
 
 func DefaultStructuredTableRules() []StructuredTableRule {
-	defaultJQ := `if type == "array" then . elif type == "object" and (.items | type == "array") then .items elif type == "object" then [.] else [] end`
-	return []StructuredTableRule{
-		{Name: "JSON objects", FilePattern: `(?i).*\.json$`, JQ: defaultJQ},
-		{Name: "YAML objects", FilePattern: `(?i).*\.(yaml|yml)$`, JQ: defaultJQ},
-	}
+	return []StructuredTableRule{}
 }
 
 func (a *App) GetStructuredTableRules() []StructuredTableRule {
-	return append([]StructuredTableRule(nil), a.structuredTableRules...)
+	rules := make([]StructuredTableRule, len(a.structuredTableRules))
+	copy(rules, a.structuredTableRules)
+	return rules
 }
 
 func (a *App) UpdateStructuredTableRules(rules []StructuredTableRule) error {
@@ -45,9 +43,6 @@ func (a *App) UpdateStructuredTableRules(rules []StructuredTableRule) error {
 }
 
 func validateStructuredTableRules(rules []StructuredTableRule) error {
-	if len(rules) == 0 {
-		return fmt.Errorf("表変換ルールを1件以上指定してください")
-	}
 	for index, rule := range rules {
 		if strings.TrimSpace(rule.Name) == "" || strings.TrimSpace(rule.FilePattern) == "" || strings.TrimSpace(rule.JQ) == "" {
 			return fmt.Errorf("表変換ルール %d の名前、対象ファイル、jqを入力してください", index+1)

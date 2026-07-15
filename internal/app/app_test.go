@@ -10,9 +10,32 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"gopkg.in/yaml.v3"
 )
 
-func TestConvertStructuredToTableDefaultRule(t *testing.T) {
+func TestStructuredTableRuleYAMLUsesCamelCaseFilePattern(t *testing.T) {
+	contents := []byte("- name: JSON rule\n  filePattern: '(?i).*\\.json$'\n  jq: '.'\n")
+	var rules []StructuredTableRule
+	if err := yaml.Unmarshal(contents, &rules); err != nil {
+		t.Fatalf("yaml.Unmarshal returned an error: %v", err)
+	}
+	if len(rules) != 1 || rules[0].FilePattern != `(?i).*\.json$` {
+		t.Fatalf("filePattern was not decoded: %#v", rules)
+	}
+	if err := validateStructuredTableRules(rules); err != nil {
+		t.Fatalf("decoded rule is invalid: %v", err)
+	}
+}
+
+func TestGetStructuredTableRulesReturnsEmptyArray(t *testing.T) {
+	app := &App{}
+	if rules := app.GetStructuredTableRules(); rules == nil {
+		t.Fatal("GetStructuredTableRules returned nil instead of an empty array")
+	}
+}
+
+func TestConvertStructuredToTableHasNoDefaultRule(t *testing.T) {
 	app := &App{structuredTableRules: DefaultStructuredTableRules()}
 	table, err := app.ConvertStructuredToTable("records.json", `[
 		{"id": 1, "name": "Ratatoskr", "enabled": true},
@@ -21,14 +44,8 @@ func TestConvertStructuredToTableDefaultRule(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ConvertStructuredToTable returned an error: %v", err)
 	}
-	if table == nil {
-		t.Fatal("ConvertStructuredToTable returned no table")
-	}
-	if !reflect.DeepEqual(table.Columns, []string{"enabled", "id", "name"}) {
-		t.Fatalf("unexpected columns: %#v", table.Columns)
-	}
-	if !reflect.DeepEqual(table.Rows, [][]string{{"true", "1", "Ratatoskr"}, {"false", "2", "Archive"}}) {
-		t.Fatalf("unexpected rows: %#v", table.Rows)
+	if table != nil {
+		t.Fatalf("expected no table without a configured rule, got %#v", table)
 	}
 }
 

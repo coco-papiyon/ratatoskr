@@ -140,11 +140,16 @@ function persistStoredNodes(key: string, value: ExplorerNode[]) {
 
 function storedNode(node: ExplorerNode): ExplorerNode {
   const { handle: _handle, ...withoutHandle } = node;
-  return { ...withoutHandle, sourceId: activeSource.value };
+  return {
+    ...withoutHandle,
+    sourceId: activeSource.value,
+    profile: activeSource.value === "s3" ? awsProfile.value : undefined,
+    region: activeSource.value === "s3" ? awsRegion.value : undefined,
+  };
 }
 
 function nodeKey(node: ExplorerNode) {
-  return `${node.sourceId}:${node.archivePath ?? node.path}:${node.archiveEntry ?? ""}`;
+  return `${node.sourceId}:${node.profile ?? ""}:${node.region ?? ""}:${node.archivePath ?? node.path}:${node.archiveEntry ?? ""}`;
 }
 
 function isFavorite(node: ExplorerNode) {
@@ -168,7 +173,13 @@ function addRecent(node: ExplorerNode) {
 }
 
 async function openStoredNode(node: ExplorerNode) {
-  activeSource.value = node.sourceId === "s3" ? "s3" : "local";
+  if (node.sourceId === "s3") {
+    activeSource.value = "s3";
+    if (node.profile) awsProfile.value = node.profile;
+    if (node.region) awsRegion.value = node.region;
+  } else {
+    activeSource.value = "local";
+  }
   await selectNode({ ...node, handle: undefined });
 }
 
@@ -566,9 +577,10 @@ async function openSettings() {
   const bridge = desktopBridge();
   if (!bridge) return;
   try {
-    structuredRulesDraft.value = (await bridge.GetStructuredTableRules()).map((rule) => ({ ...rule }));
-  } catch {
-    settingsError.value = "表変換設定を読み込めませんでした。";
+    const loadedRules = await bridge.GetStructuredTableRules();
+    structuredRulesDraft.value = (loadedRules ?? []).map((rule) => ({ ...rule }));
+  } catch (caught) {
+    settingsError.value = caught instanceof Error ? `表変換設定を読み込めませんでした: ${caught.message}` : `表変換設定を読み込めませんでした: ${String(caught)}`;
   }
 }
 
@@ -653,10 +665,10 @@ onMounted(async () => {
           <p class="eyebrow">{{ activeSource === 'local' ? 'LOCATION' : 'BUCKET' }}</p>
           <button class="location-card" :class="{ selected: activeSource === 'local' }" @click="activeSource === 'local' ? chooseFolder() : openS3Buckets()"><span class="location-icon">{{ activeSource === 'local' ? '⌘' : '◒' }}</span><span><strong>{{ activeSource === 'local' ? currentDirectoryName : selectedFolder }}</strong><small>{{ activeSource === 'local' ? 'ローカルフォルダを開く' : `${awsProfile} / ${awsRegion}` }}</small></span></button>
           <p class="eyebrow">FAVORITES</p>
-          <button v-for="node in favorites" :key="`favorite-${nodeKey(node)}`" class="nav-item stored-nav-item" @click="openStoredNode(node)"><span>★</span><span>{{ node.name }}</span></button>
+          <button v-for="node in favorites" :key="`favorite-${nodeKey(node)}`" class="nav-item stored-nav-item" @click="openStoredNode(node)"><span>★</span><span class="stored-node-content"><strong>{{ node.name }}</strong><small>{{ node.sourceId === 's3' ? `S3 / ${node.profile ?? 'default'}` : 'Local' }}</small></span></button>
           <p v-if="!favorites.length" class="stored-empty">一覧の星から追加できます</p>
           <p class="eyebrow">RECENT</p>
-          <button v-for="node in recent" :key="`recent-${nodeKey(node)}`" class="nav-item stored-nav-item" @click="openStoredNode(node)"><span>◷</span><span>{{ node.name }}</span></button>
+          <button v-for="node in recent" :key="`recent-${nodeKey(node)}`" class="nav-item stored-nav-item" @click="openStoredNode(node)"><span>◷</span><span class="stored-node-content"><strong>{{ node.name }}</strong><small>{{ node.sourceId === 's3' ? `S3 / ${node.profile ?? 'default'}` : 'Local' }}</small></span></button>
           <p v-if="!recent.length" class="stored-empty">選択したファイルが表示されます</p>
         </div>
         <div class="pane-footer"><span>● {{ activeSource === 'local' ? 'Local access' : 'S3 setup required' }}</span></div>

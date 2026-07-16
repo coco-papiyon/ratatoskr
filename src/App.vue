@@ -173,6 +173,11 @@ function toggleFavorite(node: ExplorerNode) {
   persistStoredNodes("ratatoskr.favorites", favorites.value);
 }
 
+function removeFavorite(node: ExplorerNode) {
+  favorites.value = favorites.value.filter((favorite) => nodeKey(favorite) !== nodeKey(node));
+  persistStoredNodes("ratatoskr.favorites", favorites.value);
+}
+
 function addRecent(node: ExplorerNode) {
   if (node.kind !== "file") return;
   const saved = storedNode(node);
@@ -704,7 +709,7 @@ onMounted(async () => {
           <p class="eyebrow">{{ activeSource === 'local' ? 'LOCATION' : 'BUCKET' }}</p>
           <button class="location-card" :class="{ selected: activeSource === 'local' }" @click="activeSource === 'local' ? chooseFolder() : openS3Buckets()"><span class="location-icon">{{ activeSource === 'local' ? '⌘' : '◒' }}</span><span><strong>{{ activeSource === 'local' ? currentDirectoryName : selectedFolder }}</strong><small>{{ activeSource === 'local' ? 'ローカルフォルダを開く' : `${awsProfile} / ${awsRegion}` }}</small></span></button>
           <p class="eyebrow">FAVORITES</p>
-          <button v-for="node in favorites" :key="`favorite-${nodeKey(node)}`" class="nav-item stored-nav-item" @click="openStoredNode(node)"><span>★</span><span class="stored-node-content"><strong>{{ node.name }}</strong><small>{{ node.sourceId === 's3' ? `S3 / ${node.profile ?? 'default'}` : 'Local' }}</small></span></button>
+          <div v-for="node in favorites" :key="`favorite-${nodeKey(node)}`" class="nav-item stored-nav-item" role="button" tabindex="0" @click="openStoredNode(node)" @keydown.enter="openStoredNode(node)"><span>★</span><span class="stored-node-content"><strong>{{ node.name }}</strong><small>{{ node.sourceId === 's3' ? `S3 / ${node.profile ?? 'default'}` : 'Local' }}</small></span><button class="favorite-remove" type="button" :aria-label="`${node.name}をお気に入りから削除`" title="お気に入りから削除" @click.stop="removeFavorite(node)">×</button></div>
           <p v-if="!favorites.length" class="stored-empty">一覧の星から追加できます</p>
           <p class="eyebrow">RECENT</p>
           <button v-for="node in recent" :key="`recent-${nodeKey(node)}`" class="nav-item stored-nav-item" @click="openStoredNode(node)"><span>◷</span><span class="stored-node-content"><strong>{{ node.name }}</strong><small>{{ node.sourceId === 's3' ? `S3 / ${node.profile ?? 'default'}` : 'Local' }}</small></span></button>

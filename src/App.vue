@@ -35,7 +35,7 @@ const selectedEncoding = ref("auto");
 const settingsVisible = ref(false);
 const settingsError = ref("");
 const tableConverterVisible = ref(false);
-const clipboardMessage = ref("");
+const enlargedMarkdownImage = ref<{ src: string; alt: string }>();
 const settingsDraft = ref<ViewerConfig>({ extensions: {
   markdown: [], text: [], image: [], structured: [],
 }, proxy: "", certificate: "" });
@@ -114,7 +114,6 @@ type WailsBridge = {
   ConvertStructuredToTable(filePath: string, content: string): Promise<StructuredTable | null>;
   ConvertClipboardTableToMarkdown(): Promise<ClipboardConversion>;
   ConvertClipboardMarkdownToTable(): Promise<ClipboardConversion>;
-  CopyMarkdownTableToClipboard(markdown: string): Promise<void>;
   ConvertMarkdownTableToTSV(markdown: string): Promise<string>;
 };
 
@@ -620,21 +619,6 @@ async function convertClipboardTable(): Promise<ClipboardConversion> {
   return bridge.ConvertClipboardTableToMarkdown();
 }
 
-async function copyMarkdownTable() {
-  if (preview.value.kind !== "markdown") return;
-  const bridge = desktopBridge();
-  if (!bridge) {
-    clipboardMessage.value = "デスクトップ版でのみクリップボード変換を利用できます。";
-    return;
-  }
-  try {
-    await bridge.CopyMarkdownTableToClipboard(preview.value.content);
-    clipboardMessage.value = "Markdownの表をExcelへ貼り付けられる形式でコピーしました。";
-  } catch (caught) {
-    clipboardMessage.value = caught instanceof Error ? caught.message : String(caught);
-  }
-}
-
 async function convertClipboardMarkdownTable(): Promise<ClipboardConversion> {
   const bridge = desktopBridge();
   if (!bridge) throw new Error("デスクトップ版でのみクリップボード変換を利用できます。");
@@ -655,6 +639,20 @@ function stopResize() {
   window.removeEventListener("pointerup", stopResize);
 }
 
+function openMarkdownImage(event: MouseEvent) {
+  const target = event.target;
+  if (!(target instanceof HTMLImageElement) || !target.classList.contains("markdown-image")) return;
+  enlargedMarkdownImage.value = { src: target.src, alt: target.alt };
+}
+
+function closeMarkdownImage() {
+  enlargedMarkdownImage.value = undefined;
+}
+
+function handleDocumentKeydown(event: KeyboardEvent) {
+  if (event.key === "Escape") closeMarkdownImage();
+}
+
 function startResize(event: PointerEvent) {
   resizing.value = true;
   resizeContainer.value = (event.currentTarget as HTMLElement).parentElement ?? undefined;
@@ -666,9 +664,11 @@ function startResize(event: PointerEvent) {
 onBeforeUnmount(() => {
   if (objectUrl) URL.revokeObjectURL(objectUrl);
   stopResize();
+  document.removeEventListener("keydown", handleDocumentKeydown);
 });
 
 onMounted(async () => {
+  document.addEventListener("keydown", handleDocumentKeydown);
   const bridge = desktopBridge();
   if (!bridge) return;
   try {
@@ -716,7 +716,6 @@ onMounted(async () => {
       <section class="content-pane">
         <div class="content-toolbar"><div class="path-controls"><button v-if="canNavigateUp" class="up-button" title="上のディレクトリへ移動" aria-label="上のディレクトリへ移動" @click="goToParentDirectory">↑</button><div class="breadcrumbs" :title="breadcrumbs"><span>{{ breadcrumbs }}</span></div></div><label class="search"><span>⌕</span><input v-model="query" placeholder="ファイルを検索" /></label></div>
         <p v-if="error" class="error-message">{{ error }}</p>
-        <p v-if="clipboardMessage" class="clipboard-message">{{ clipboardMessage }}</p>
         <div class="body-grid" :style="{ '--list-width': `${listWidth}%` }" :class="{ resizing }">
           <section class="file-list" aria-label="ファイル一覧">
             <div class="list-heading"><span>Files</span><span>{{ filteredNodes.length }} items</span></div>
@@ -727,8 +726,8 @@ onMounted(async () => {
           </section>
           <div class="splitter" role="separator" aria-label="一覧と本文の幅を変更" title="ドラッグして幅を変更" @pointerdown="startResize"><span></span></div>
           <section class="viewer-pane">
-            <div class="viewer-toolbar"><span class="viewer-title"><i :class="`type-${preview.kind}`"></i>{{ selectedNode.name }}</span><span class="viewer-controls"><button v-if="preview.kind === 'markdown'" class="structured-toggle" title="Markdownの表をExcel貼り付け用にコピー" @click="copyMarkdownTable">Markdown → Excel</button><button v-if="structuredTable" class="structured-toggle" @click="structuredViewMode = structuredViewMode === 'table' ? 'source' : 'table'">{{ structuredViewMode === 'table' ? 'Source' : 'Table' }}</button><label>Encoding <select v-model="selectedEncoding" @change="reloadSelectedFile"><option value="auto">Auto</option><option value="utf-8">UTF-8</option><option value="shift-jis">Shift_JIS</option><option value="euc-jp">EUC-JP</option><option value="iso-2022-jp">ISO-2022-JP</option></select></label><span>{{ preview.kind }}</span></span></div>
-            <article v-if="preview.kind === 'markdown'" class="markdown-view" v-html="markdownToHtml(preview.content)" />
+            <div class="viewer-toolbar"><span class="viewer-title"><i :class="`type-${preview.kind}`"></i>{{ selectedNode.name }}</span><span class="viewer-controls"><button v-if="structuredTable" class="structured-toggle" @click="structuredViewMode = structuredViewMode === 'table' ? 'source' : 'table'">{{ structuredViewMode === 'table' ? 'Source' : 'Table' }}</button><label>Encoding <select v-model="selectedEncoding" @change="reloadSelectedFile"><option value="auto">Auto</option><option value="utf-8">UTF-8</option><option value="shift-jis">Shift_JIS</option><option value="euc-jp">EUC-JP</option><option value="iso-2022-jp">ISO-2022-JP</option></select></label><span>{{ preview.kind }}</span></span></div>
+            <article v-if="preview.kind === 'markdown'" class="markdown-view" @click="openMarkdownImage" v-html="markdownToHtml(preview.content)" />
             <div v-else-if="preview.kind === 'image'" class="image-view"><img :src="preview.url" :alt="selectedNode.name" /><span>Fit to view</span></div>
             <pre v-else-if="preview.kind === 'text'" class="text-view"><code v-html="highlightedPreview" /></pre>
             <section v-else-if="preview.kind === 'structured' && preview.format === 'csv'" class="csv-view">
@@ -748,4 +747,8 @@ onMounted(async () => {
   </main>
   <SettingsDialog v-if="settingsVisible" v-model:settings="settingsDraft" v-model:rules="structuredRulesDraft" :error="settingsError" :archive-extensions="archiveExtensions" @close="settingsVisible = false" @save="saveSettings" />
   <TableToMarkdownDialog v-if="tableConverterVisible" :convert-to-markdown="convertClipboardTable" :convert-to-table="convertClipboardMarkdownTable" @close="tableConverterVisible = false" />
+  <div v-if="enlargedMarkdownImage" class="markdown-image-lightbox" role="dialog" aria-modal="true" aria-label="画像を拡大表示" @click.self="closeMarkdownImage">
+    <button class="markdown-image-close" type="button" aria-label="画像を閉じる" @click="closeMarkdownImage">×</button>
+    <img :src="enlargedMarkdownImage.src" :alt="enlargedMarkdownImage.alt" @click.stop />
+  </div>
 </template>

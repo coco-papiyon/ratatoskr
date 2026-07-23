@@ -88,7 +88,7 @@ export function markdownToHtml(markdown: string) {
     .replace(/`([^`]+)`/g, "<code>$1</code>")
     .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
     .replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (_, alt: string, url: string) => `<img class="markdown-image" src="${url.replace(/"/g, "&quot;")}" alt="${alt.replace(/"/g, "&quot;")}" />`)
-    .replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer">$1</a>')
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, label: string, href: string) => `<a class="markdown-link" href="${href.replace(/"/g, "&quot;")}">${label}</a>`)
     .replace(/\n\n/g, "</p><p>")
     .replace(/__FENCED_CODE_BLOCK_(\d+)__/g, (_, index: string) => fencedCodeBlocks[Number(index)] ?? "")
     .replace(/^(?!<[hublp])/gm, "")

@@ -7,6 +7,7 @@ import { ansiToHtml, highlightCode, markdownToHtml, parseCsv } from "./lib/viewe
 import { renderMermaidDiagrams } from "./lib/mermaid-renderer";
 import { demoMarkdown } from "./mock-data";
 import type { ExplorerNode, PreviewData, SourceType, StructuredFormat, StructuredTableRule, ViewerConfig } from "./types";
+import { BrowserOpenURL } from "../wailsjs/runtime/runtime";
 
 const activeSource = ref<SourceType>("local");
 const headerVisible = ref(true);
@@ -38,6 +39,7 @@ const settingsError = ref("");
 const tableConverterVisible = ref(false);
 const enlargedMarkdownImage = ref<{ src: string; alt: string }>();
 const markdownView = ref<HTMLElement>();
+const markdownHistory = ref<ExplorerNode[]>([]);
 const autoRefreshIntervalMs = 3000;
 const settingsDraft = ref<ViewerConfig>({ extensions: {
   markdown: [], text: [], image: [], structured: [],
@@ -56,6 +58,7 @@ const viewerConfig = ref<ViewerConfig>({ extensions: {
 let objectUrl: string | undefined;
 let autoRefreshTimer: number | undefined;
 let autoRefreshInFlight = false;
+let lastMouseBackAt = 0;
 
 type FileWatch = {
   key: string;
@@ -85,6 +88,7 @@ const highlightedPreview = computed(() => {
   return /\x1b\[[0-9;]*m/.test(preview.value.content) ? ansiToHtml(preview.value.content) : highlightCode(preview.value.content);
 });
 const markdownHtml = computed(() => preview.value.kind === "markdown" ? markdownToHtml(preview.value.content) : "");
+const canGoBackMarkdown = computed(() => markdownHistory.value.length > 0);
 const structuredText = computed(() => {
   if (preview.value.kind !== "structured" || preview.value.format === "csv") return "";
   if (preview.value.format === "json") {
@@ -727,6 +731,108 @@ function closeMarkdownImage() {
   enlargedMarkdownImage.value = undefined;
 }
 
+function markdownLinkPath(href: string) {
+  const path = href.split(/[?#]/, 1)[0];
+  return /\.(?:md|markdown|mdx)$/i.test(path) ? path : undefined;
+}
+
+function resolveRelativeMarkdownPath(currentPath: string, href: string) {
+  const segments = currentPath.replace(/\\/g, "/").split("/");
+  segments.pop();
+  for (const segment of href.split("/")) {
+    if (!segment || segment === ".") continue;
+    if (segment === "..") segments.pop();
+    else segments.push(segment);
+  }
+  return segments.join("/");
+}
+
+function markdownLinkedNode(href: string): ExplorerNode | undefined {
+  const markdownPath = markdownLinkPath(href);
+  if (!markdownPath || /^(?:[a-z][a-z\d+.-]*:|\/)/i.test(markdownPath)) return;
+  const source = selectedNode.value;
+  if (source.archivePath && source.archiveEntry) {
+    const archiveEntry = resolveRelativeMarkdownPath(source.archiveEntry, markdownPath);
+    return {
+      id: `${source.archivePath}!/${archiveEntry}`,
+      name: archiveEntry.split("/").pop() ?? archiveEntry,
+      kind: "file",
+      path: `${source.archivePath}!/${archiveEntry}`,
+      sourceId: activeSource.value,
+      archivePath: source.archivePath,
+      archiveEntry,
+    };
+  }
+  if (activeSource.value === "s3") {
+    const location = parseS3Path(source.path);
+    if (!location) return;
+    const key = resolveRelativeMarkdownPath(location.key, markdownPath);
+    return { id: `s3://${location.bucket}/${key}`, name: key.split("/").pop() ?? key, kind: "file", path: `s3://${location.bucket}/${key}`, sourceId: "s3" };
+  }
+  const path = resolveRelativeMarkdownPath(source.path, markdownPath);
+  const existingNode = nodes.value.find((node) => node.path.replace(/\\/g, "/") === path);
+  return existingNode ?? { id: path, name: path.split("/").pop() ?? path, kind: "file", path, sourceId: "local" };
+}
+
+function openExternalMarkdownLink(href: string) {
+  if (desktopBridge()) {
+    BrowserOpenURL(href);
+    return;
+  }
+  window.open(href, "_blank", "noopener,noreferrer");
+}
+
+async function openMarkdownLink(href: string) {
+  const target = markdownLinkedNode(href);
+  if (target) {
+    if (!desktopBridge() && !target.handle && activeSource.value === "local") {
+      const browserNode = nodes.value.find((node) => node.path.replace(/\\/g, "/") === target.path);
+      if (!browserNode?.handle) {
+        error.value = "ブラウザ版では、現在開いているフォルダ内のMarkdownリンクのみ開けます。";
+        return;
+      }
+      await openMarkdownLinkedNode(browserNode);
+      return;
+    }
+    await openMarkdownLinkedNode(target);
+    return;
+  }
+  openExternalMarkdownLink(href);
+}
+
+async function openMarkdownLinkedNode(node: ExplorerNode) {
+  markdownHistory.value.push(selectedNode.value);
+  await selectNode(node);
+}
+
+async function goBackMarkdown() {
+  const previous = markdownHistory.value.pop();
+  if (!previous) return;
+  await selectNode(previous);
+}
+
+function handleMouseBackButton(event: MouseEvent) {
+  if (event.button !== 3 || !canGoBackMarkdown.value) return;
+  event.preventDefault();
+  const now = Date.now();
+  if (now - lastMouseBackAt < 250) return;
+  lastMouseBackAt = now;
+  void goBackMarkdown();
+}
+
+function handleMarkdownClick(event: MouseEvent) {
+  const target = event.target;
+  if (!(target instanceof Element)) return;
+  const link = target.closest<HTMLAnchorElement>("a.markdown-link");
+  if (link) {
+    event.preventDefault();
+    const href = link.getAttribute("href");
+    if (href) void openMarkdownLink(href);
+    return;
+  }
+  openMarkdownImage(event);
+}
+
 async function renderMarkdownMermaid() {
   await nextTick();
   if (preview.value.kind !== "markdown" || !markdownView.value) return;
@@ -754,10 +860,14 @@ onBeforeUnmount(() => {
   if (autoRefreshTimer) window.clearInterval(autoRefreshTimer);
   stopResize();
   document.removeEventListener("keydown", handleDocumentKeydown);
+  window.removeEventListener("mousedown", handleMouseBackButton, true);
+  window.removeEventListener("auxclick", handleMouseBackButton, true);
 });
 
 onMounted(async () => {
   document.addEventListener("keydown", handleDocumentKeydown);
+  window.addEventListener("mousedown", handleMouseBackButton, true);
+  window.addEventListener("auxclick", handleMouseBackButton, true);
   void renderMarkdownMermaid();
   autoRefreshTimer = window.setInterval(() => {
     void pollSelectedFileChanges();
@@ -819,8 +929,8 @@ onMounted(async () => {
           </section>
           <div class="splitter" role="separator" aria-label="一覧と本文の幅を変更" title="ドラッグして幅を変更" @pointerdown="startResize"><span></span></div>
           <section class="viewer-pane">
-            <div class="viewer-toolbar"><span class="viewer-title"><i :class="`type-${preview.kind}`"></i>{{ selectedNode.name }}</span><span class="viewer-controls"><button v-if="structuredTable" class="structured-toggle" @click="structuredViewMode = structuredViewMode === 'table' ? 'source' : 'table'">{{ structuredViewMode === 'table' ? 'Source' : 'Table' }}</button><label>Encoding <select v-model="selectedEncoding" @change="reloadSelectedFile"><option value="auto">Auto</option><option value="utf-8">UTF-8</option><option value="shift-jis">Shift_JIS</option><option value="euc-jp">EUC-JP</option><option value="iso-2022-jp">ISO-2022-JP</option></select></label><span>{{ preview.kind }}</span></span></div>
-            <article v-if="preview.kind === 'markdown'" ref="markdownView" class="markdown-view" @click="openMarkdownImage" v-html="markdownHtml" />
+            <div class="viewer-toolbar"><span class="viewer-title"><i :class="`type-${preview.kind}`"></i>{{ selectedNode.name }}</span><span class="viewer-controls"><button class="markdown-back-button" :disabled="!canGoBackMarkdown" title="Markdownリンクの移動を戻る" aria-label="Markdownリンクの移動を戻る" @click="goBackMarkdown">←</button><button v-if="structuredTable" class="structured-toggle" @click="structuredViewMode = structuredViewMode === 'table' ? 'source' : 'table'">{{ structuredViewMode === 'table' ? 'Source' : 'Table' }}</button><label>Encoding <select v-model="selectedEncoding" @change="reloadSelectedFile"><option value="auto">Auto</option><option value="utf-8">UTF-8</option><option value="shift-jis">Shift_JIS</option><option value="euc-jp">EUC-JP</option><option value="iso-2022-jp">ISO-2022-JP</option></select></label><span>{{ preview.kind }}</span></span></div>
+            <article v-if="preview.kind === 'markdown'" ref="markdownView" class="markdown-view" @click="handleMarkdownClick" v-html="markdownHtml" />
             <div v-else-if="preview.kind === 'image'" class="image-view"><img :src="preview.url" :alt="selectedNode.name" /><span>Fit to view</span></div>
             <pre v-else-if="preview.kind === 'text'" class="text-view"><code v-html="highlightedPreview" /></pre>
             <section v-else-if="preview.kind === 'structured' && preview.format === 'csv'" class="csv-view">

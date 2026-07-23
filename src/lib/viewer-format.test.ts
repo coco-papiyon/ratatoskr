@@ -42,6 +42,12 @@ describe("viewer HTML formatting", () => {
     expect(html).not.toContain("mermaid-diagram");
   });
 
+  it("renders relative and external Markdown links for click handling", () => {
+    const html = markdownToHtml("[guide](docs/guide.md) [site](https://example.com/docs?a=1&b=2)");
+    expect(html).toContain('<a class="markdown-link" href="docs/guide.md">guide</a>');
+    expect(html).toContain('<a class="markdown-link" href="https://example.com/docs?a=1&amp;b=2">site</a>');
+  });
+
   it("replaces failed Mermaid output with an error message and hides its source", () => {
     const classes = new Set<string>();
     const diagram = {

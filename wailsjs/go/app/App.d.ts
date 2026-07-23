@@ -16,6 +16,10 @@ export function CopyMarkdownTableToClipboard(arg1:string):Promise<void>;
 
 export function CurrentWorkingDirectory():Promise<string>;
 
+export function GetLocalFileModifiedAt(arg1:string):Promise<number>;
+
+export function GetS3ObjectModifiedAt(arg1:string,arg2:string,arg3:string,arg4:string):Promise<number>;
+
 export function GetStructuredTableRules():Promise<Array<app.StructuredTableRule>>;
 
 export function GetViewerConfig():Promise<app.ViewerConfig>;

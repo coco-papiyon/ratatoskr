@@ -120,6 +120,18 @@ func (a *App) ReadS3Preview(profile, region, bucket, key, charset string) (S3Pre
 	return S3Preview{Content: text}, nil
 }
 
+func (a *App) GetS3ObjectModifiedAt(profile, region, bucket, key string) (int64, error) {
+	client, err := a.s3Client(profile, region)
+	if err != nil {
+		return 0, err
+	}
+	response, err := client.HeadObject(a.ctx, &s3.HeadObjectInput{Bucket: aws.String(bucket), Key: aws.String(key)})
+	if err != nil {
+		return 0, fmt.Errorf("S3 オブジェクトの更新日時を取得できません: %w", err)
+	}
+	return aws.ToTime(response.LastModified).UnixMilli(), nil
+}
+
 func (a *App) ListS3Archive(profile, region, bucket, key, prefix string) ([]LocalEntry, error) {
 	contents, err := a.readS3Archive(profile, region, bucket, key)
 	if err != nil {

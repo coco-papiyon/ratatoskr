@@ -69,7 +69,15 @@ export function parseCsv(source: string) {
 }
 
 export function markdownToHtml(markdown: string) {
-  return escapeHtml(markdown)
+  const fencedCodeBlocks: string[] = [];
+  const html = escapeHtml(markdown)
+    .replace(/```([^\r\n]*)\r?\n([\s\S]*?)```/g, (_, language: string, code: string) => {
+      const placeholder = `__FENCED_CODE_BLOCK_${fencedCodeBlocks.length}__`;
+      fencedCodeBlocks.push(language === "mermaid"
+        ? `<div class="mermaid-diagram">${code}</div>`
+        : `<pre><code>${code}</code></pre>`);
+      return placeholder;
+    })
     .replace(/((?:^[^\S\r\n]*\|.*\|[^\S\r\n]*\r?\n?)+)/gm, (tableBlock) => markdownTableToHtml(tableBlock))
     .replace(/^### (.*)$/gm, "<h3>$1</h3>")
     .replace(/^## (.*)$/gm, "<h2>$1</h2>")
@@ -77,14 +85,21 @@ export function markdownToHtml(markdown: string) {
     .replace(/^&gt; ?([^\r\n]*(?:\r?\n&gt; ?[^\r\n]*)*)/gm, (_, quote: string) => `<blockquote>${quote.replace(/\r?\n&gt; ?/g, "<br>")}</blockquote>`)
     .replace(/(?:^\d+\. .*(?:\r?\n|$))+/gm, (listBlock) => markdownOrderedListToHtml(listBlock))
     .replace(/(?:^[-*] .*(?:\r?\n|$))+/gm, (listBlock) => markdownUnorderedListToHtml(listBlock))
-    .replace(/```[\w-]*\n([\s\S]*?)```/g, "<pre><code>$1</code></pre>")
     .replace(/`([^`]+)`/g, "<code>$1</code>")
     .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
     .replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (_, alt: string, url: string) => `<img class="markdown-image" src="${url.replace(/"/g, "&quot;")}" alt="${alt.replace(/"/g, "&quot;")}" />`)
     .replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer">$1</a>')
     .replace(/\n\n/g, "</p><p>")
+    .replace(/__FENCED_CODE_BLOCK_(\d+)__/g, (_, index: string) => fencedCodeBlocks[Number(index)] ?? "")
     .replace(/^(?!<[hublp])/gm, "")
     .replace(/<p><\/p>/g, "");
+
+  return html;
+}
+
+export function showMermaidError(diagram: Pick<HTMLElement, "classList" | "textContent">) {
+  diagram.classList.add("mermaid-diagram-error");
+  diagram.textContent = "Mermaid図を描画できませんでした。";
 }
 
 function escapeHtml(value: string) {

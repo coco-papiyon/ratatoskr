@@ -63,6 +63,14 @@ func (a *App) ReadLocalTextFile(path string) (string, error) {
 	return string(contents), nil
 }
 
+func (a *App) GetLocalFileModifiedAt(path string) (int64, error) {
+	info, err := os.Stat(filepath.Clean(path))
+	if err != nil {
+		return 0, fmt.Errorf("ファイルを確認できません: %w", err)
+	}
+	return info.ModTime().UnixMilli(), nil
+}
+
 func (a *App) ReadLocalPreview(path, charset string) (S3Preview, error) {
 	path = filepath.Clean(path)
 	contents, err := os.ReadFile(path)

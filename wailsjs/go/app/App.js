@@ -30,6 +30,14 @@ export function CurrentWorkingDirectory() {
   return window['go']['app']['App']['CurrentWorkingDirectory']();
 }
 
+export function GetLocalFileModifiedAt(arg1) {
+  return window['go']['app']['App']['GetLocalFileModifiedAt'](arg1);
+}
+
+export function GetS3ObjectModifiedAt(arg1, arg2, arg3, arg4) {
+  return window['go']['app']['App']['GetS3ObjectModifiedAt'](arg1, arg2, arg3, arg4);
+}
+
 export function GetStructuredTableRules() {
   return window['go']['app']['App']['GetStructuredTableRules']();
 }

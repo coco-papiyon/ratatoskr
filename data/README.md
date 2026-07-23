@@ -67,3 +67,12 @@ console.log(`preview: ${source}`);
 ```bash
 echo "Ratatoskr viewer"
 ```
+
+### Mermaid 図
+
+```mermaid
+flowchart LR
+  A[ファイルを選択] --> B{プレビュー可能?}
+  B -->|はい| C[内容を表示]
+  B -->|いいえ| D[未対応メッセージ]
+```

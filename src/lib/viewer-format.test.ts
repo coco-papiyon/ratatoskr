@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ansiToHtml, highlightCode, markdownToHtml, parseCsv } from "./viewer-format";
+import { ansiToHtml, highlightCode, markdownToHtml, parseCsv, showMermaidError } from "./viewer-format";
 
 describe("parseCsv", () => {
   it("parses quoted commas, escaped quotes, and line breaks", () => {
@@ -21,6 +21,36 @@ describe("viewer HTML formatting", () => {
     expect(html).toContain("<table>");
     expect(html).toContain("<blockquote>quoted</blockquote>");
     expect(html).toContain("<ol><li>first</li><li>second</li></ol>");
+  });
+
+  it("does not convert fenced code block content into HTML lists", () => {
+    const html = markdownToHtml("```text\n- item\n**bold**\n```\n");
+    expect(html).toContain("<pre><code>- item\n**bold**\n</code></pre>");
+    expect(html).not.toContain("<ul>");
+    expect(html).not.toContain("<strong>");
+  });
+
+  it("marks Mermaid blocks for diagram rendering without applying Markdown formatting", () => {
+    const html = markdownToHtml("```mermaid\nflowchart LR\n  A[**source**] --> B\n```\n");
+    expect(html).toContain('<div class="mermaid-diagram">flowchart LR\n  A[**source**] --&gt; B\n</div>');
+    expect(html).not.toContain("<strong>source</strong>");
+  });
+
+  it("keeps PlantUML blocks as escaped source code", () => {
+    const html = markdownToHtml("```plantuml\n@startuml\nAlice -> Bob: hello\n@enduml\n```\n");
+    expect(html).toContain("<pre><code>@startuml\nAlice -&gt; Bob: hello\n@enduml\n</code></pre>");
+    expect(html).not.toContain("mermaid-diagram");
+  });
+
+  it("replaces failed Mermaid output with an error message and hides its source", () => {
+    const classes = new Set<string>();
+    const diagram = {
+      classList: { add: (name: string) => classes.add(name) },
+      textContent: "invalid Mermaid source",
+    } as unknown as HTMLElement;
+    showMermaidError(diagram);
+    expect(classes).toContain("mermaid-diagram-error");
+    expect(diagram.textContent).toBe("Mermaid図を描画できませんでした。");
   });
 
   it("escapes source code and applies token classes", () => {

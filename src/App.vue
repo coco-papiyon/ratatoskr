@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import SettingsDialog from "./components/SettingsDialog.vue";
 import TableToMarkdownDialog from "./components/TableToMarkdownDialog.vue";
 import { archiveExtensions, formatSize, isArchiveName, parseS3Path, previewKind as resolvePreviewKind, structuredFormat } from "./lib/file-types";
 import { ansiToHtml, highlightCode, markdownToHtml, parseCsv } from "./lib/viewer-format";
+import { renderMermaidDiagrams } from "./lib/mermaid-renderer";
 import { demoMarkdown } from "./mock-data";
 import type { ExplorerNode, PreviewData, SourceType, StructuredFormat, StructuredTableRule, ViewerConfig } from "./types";
 
@@ -36,6 +37,8 @@ const settingsVisible = ref(false);
 const settingsError = ref("");
 const tableConverterVisible = ref(false);
 const enlargedMarkdownImage = ref<{ src: string; alt: string }>();
+const markdownView = ref<HTMLElement>();
+const autoRefreshIntervalMs = 3000;
 const settingsDraft = ref<ViewerConfig>({ extensions: {
   markdown: [], text: [], image: [], structured: [],
 }, proxy: "", certificate: "" });
@@ -51,6 +54,16 @@ const viewerConfig = ref<ViewerConfig>({ extensions: {
   structured: [".json", ".xml", ".csv", ".yaml", ".yml"],
 }, proxy: "", certificate: "" });
 let objectUrl: string | undefined;
+let autoRefreshTimer: number | undefined;
+let autoRefreshInFlight = false;
+
+type FileWatch = {
+  key: string;
+  modifiedAt: number;
+  getModifiedAt: () => Promise<number>;
+};
+
+const watchedFile = ref<FileWatch>();
 
 const filteredNodes = computed(() => {
   const needle = query.value.trim().toLowerCase();
@@ -71,6 +84,7 @@ const highlightedPreview = computed(() => {
   if (preview.value.kind !== "text") return "";
   return /\x1b\[[0-9;]*m/.test(preview.value.content) ? ansiToHtml(preview.value.content) : highlightCode(preview.value.content);
 });
+const markdownHtml = computed(() => preview.value.kind === "markdown" ? markdownToHtml(preview.value.content) : "");
 const structuredText = computed(() => {
   if (preview.value.kind !== "structured" || preview.value.format === "csv") return "";
   if (preview.value.format === "json") {
@@ -94,6 +108,8 @@ const csvBody = computed(() => csvHeaderEnabled.value ? csvRows.value.slice(1) :
 
 type WailsBridge = {
   CurrentWorkingDirectory(): Promise<string>;
+  GetLocalFileModifiedAt(path: string): Promise<number>;
+  GetS3ObjectModifiedAt(profile: string, region: string, bucket: string, key: string): Promise<number>;
   ParentLocalDirectory(path: string): Promise<string>;
   SelectLocalDirectory(): Promise<string>;
   ListLocalDirectory(path: string): Promise<ExplorerNode[]>;
@@ -200,12 +216,65 @@ function previewKind(node: ExplorerNode): PreviewData["kind"] {
   return resolvePreviewKind(node, viewerConfig.value);
 }
 
+function watchKeyForNode(node: ExplorerNode) {
+  return `${activeSource.value}:${awsProfile.value}:${awsRegion.value}:${node.archivePath ?? node.path}:${node.archiveEntry ?? ""}`;
+}
+
+function clearWatchedFile() {
+  watchedFile.value = undefined;
+}
+
+function modifiedAtCheckerForNode(node: ExplorerNode) {
+  if (node.kind !== "file") return;
+  if (node.handle) {
+    const handle = node.handle as FileSystemFileHandle;
+    return async () => (await handle.getFile()).lastModified;
+  }
+  const bridge = desktopBridge();
+  if (!bridge) return;
+  if (activeSource.value === "local") {
+    const targetPath = node.archivePath ?? node.path;
+    return async () => bridge.GetLocalFileModifiedAt(targetPath);
+  }
+  const location = parseS3Path(node.archivePath ?? node.path);
+  if (!location) return;
+  return async () => bridge.GetS3ObjectModifiedAt(awsProfile.value, awsRegion.value, location.bucket, location.key);
+}
+
+async function setWatchedFile(node: ExplorerNode, modifiedAt?: number) {
+  const getModifiedAt = modifiedAtCheckerForNode(node);
+  if (!getModifiedAt) {
+    clearWatchedFile();
+    return;
+  }
+  const nextModifiedAt = modifiedAt ?? await getModifiedAt();
+  watchedFile.value = { key: watchKeyForNode(node), modifiedAt: nextModifiedAt, getModifiedAt };
+}
+
+async function pollSelectedFileChanges() {
+  if (autoRefreshInFlight) return;
+  const watch = watchedFile.value;
+  if (!watch || selectedNode.value.kind !== "file") return;
+  autoRefreshInFlight = true;
+  try {
+    const latestModifiedAt = await watch.getModifiedAt();
+    if (!watchedFile.value || watchedFile.value.key !== watch.key) return;
+    if (latestModifiedAt === watch.modifiedAt) return;
+    await selectNode(selectedNode.value);
+  } catch {
+    // Ignore transient polling failures and try again on the next interval.
+  } finally {
+    autoRefreshInFlight = false;
+  }
+}
+
 async function selectNode(node: ExplorerNode) {
   addRecent(node);
   selectedNode.value = node;
   if (activeSource.value === "local") localSelectedNode.value = node;
   error.value = "";
   structuredTable.value = null;
+  clearWatchedFile();
   if (objectUrl) URL.revokeObjectURL(objectUrl);
   objectUrl = undefined;
 
@@ -243,6 +312,7 @@ async function selectNode(node: ExplorerNode) {
             ? { kind, format: structuredFormat(node), content: data.content }
           : { kind, content: "この形式はプレビューに対応していません。" };
       if (kind === "structured") await prepareStructuredTable(node, data.content);
+        await setWatchedFile(node);
     } catch {
       error.value = "S3 オブジェクトを読み込めませんでした。";
     }
@@ -271,6 +341,7 @@ async function selectNode(node: ExplorerNode) {
           ? { kind, format: kind === "structured" ? structuredFormat(node) : undefined, content: data.content }
           : { kind, content: "この形式はプレビューに対応していません。" };
       if (kind === "structured") await prepareStructuredTable(node, data.content);
+      await setWatchedFile(node);
     } catch {
       error.value = "ファイルの読み込みに失敗しました。";
     }
@@ -297,6 +368,7 @@ async function selectNode(node: ExplorerNode) {
     } else {
       preview.value = { kind, content: "この形式はプレビューに対応していません。" };
     }
+    await setWatchedFile(node, file.lastModified);
   } catch {
     error.value = "ファイルの読み込みに失敗しました。もう一度選択してください。";
   }
@@ -376,6 +448,7 @@ async function readArchiveNode(node: ExplorerNode) {
           ? { kind, format: structuredFormat(node), content: data.content }
           : { kind, content: "この形式はプレビューに対応していません。" };
     if (kind === "structured") await prepareStructuredTable(node, data.content);
+    await setWatchedFile(node);
   } catch (caught) {
     error.value = caught instanceof Error ? caught.message : `圧縮ファイル内の項目を読み込めませんでした: ${String(caught)}`;
   }
@@ -654,6 +727,16 @@ function closeMarkdownImage() {
   enlargedMarkdownImage.value = undefined;
 }
 
+async function renderMarkdownMermaid() {
+  await nextTick();
+  if (preview.value.kind !== "markdown" || !markdownView.value) return;
+  await renderMermaidDiagrams(markdownView.value);
+}
+
+watch(() => [preview.value.kind, preview.value.content], () => {
+  void renderMarkdownMermaid();
+}, { flush: "post" });
+
 function handleDocumentKeydown(event: KeyboardEvent) {
   if (event.key === "Escape") closeMarkdownImage();
 }
@@ -668,12 +751,17 @@ function startResize(event: PointerEvent) {
 
 onBeforeUnmount(() => {
   if (objectUrl) URL.revokeObjectURL(objectUrl);
+  if (autoRefreshTimer) window.clearInterval(autoRefreshTimer);
   stopResize();
   document.removeEventListener("keydown", handleDocumentKeydown);
 });
 
 onMounted(async () => {
   document.addEventListener("keydown", handleDocumentKeydown);
+  void renderMarkdownMermaid();
+  autoRefreshTimer = window.setInterval(() => {
+    void pollSelectedFileChanges();
+  }, autoRefreshIntervalMs);
   const bridge = desktopBridge();
   if (!bridge) return;
   try {
@@ -732,7 +820,7 @@ onMounted(async () => {
           <div class="splitter" role="separator" aria-label="一覧と本文の幅を変更" title="ドラッグして幅を変更" @pointerdown="startResize"><span></span></div>
           <section class="viewer-pane">
             <div class="viewer-toolbar"><span class="viewer-title"><i :class="`type-${preview.kind}`"></i>{{ selectedNode.name }}</span><span class="viewer-controls"><button v-if="structuredTable" class="structured-toggle" @click="structuredViewMode = structuredViewMode === 'table' ? 'source' : 'table'">{{ structuredViewMode === 'table' ? 'Source' : 'Table' }}</button><label>Encoding <select v-model="selectedEncoding" @change="reloadSelectedFile"><option value="auto">Auto</option><option value="utf-8">UTF-8</option><option value="shift-jis">Shift_JIS</option><option value="euc-jp">EUC-JP</option><option value="iso-2022-jp">ISO-2022-JP</option></select></label><span>{{ preview.kind }}</span></span></div>
-            <article v-if="preview.kind === 'markdown'" class="markdown-view" @click="openMarkdownImage" v-html="markdownToHtml(preview.content)" />
+            <article v-if="preview.kind === 'markdown'" ref="markdownView" class="markdown-view" @click="openMarkdownImage" v-html="markdownHtml" />
             <div v-else-if="preview.kind === 'image'" class="image-view"><img :src="preview.url" :alt="selectedNode.name" /><span>Fit to view</span></div>
             <pre v-else-if="preview.kind === 'text'" class="text-view"><code v-html="highlightedPreview" /></pre>
             <section v-else-if="preview.kind === 'structured' && preview.format === 'csv'" class="csv-view">

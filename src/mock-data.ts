@@ -22,4 +22,13 @@ export const demoMarkdown = `# Ratatoskr workspace
 \`\`\`ts
 const source = await explorer.open("local");
 \`\`\`
+
+## 処理の流れ
+
+\`\`\`mermaid
+flowchart LR
+  A[ファイルを選択] --> B{プレビュー可能?}
+  B -->|はい| C[内容を表示]
+  B -->|いいえ| D[未対応メッセージ]
+\`\`\`
 `;

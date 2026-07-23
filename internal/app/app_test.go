@@ -10,6 +10,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -232,6 +233,26 @@ func TestTarGzArchiveNavigationAndPreview(t *testing.T) {
 	}
 	if preview.Content != string(contents) {
 		t.Fatalf("unexpected preview: %#v", preview)
+	}
+}
+
+func TestGetLocalFileModifiedAtReturnsUnixMilliseconds(t *testing.T) {
+	tempDir := t.TempDir()
+	path := filepath.Join(tempDir, "sample.txt")
+	if err := os.WriteFile(path, []byte("ratatoskr"), 0o644); err != nil {
+		t.Fatalf("os.WriteFile returned an error: %v", err)
+	}
+	expected := time.Date(2026, time.July, 22, 12, 34, 56, 0, time.UTC)
+	if err := os.Chtimes(path, expected, expected); err != nil {
+		t.Fatalf("os.Chtimes returned an error: %v", err)
+	}
+	app := &App{}
+	actual, err := app.GetLocalFileModifiedAt(path)
+	if err != nil {
+		t.Fatalf("GetLocalFileModifiedAt returned an error: %v", err)
+	}
+	if actual != expected.UnixMilli() {
+		t.Fatalf("unexpected modified time: got %d want %d", actual, expected.UnixMilli())
 	}
 }
 
